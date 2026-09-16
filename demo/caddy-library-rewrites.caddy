@@ -1,0 +1,12 @@
+# Demo only. Add inside the site block that serves the static mirror
+# (e.g. `library.libretexts.dev { ... }`) BEFORE `root`/`file_server`.
+# Conductor's IDEA capture performs three Deki reads; idea_index.py writes them
+# as static JSON and these rewrites map the Deki paths onto those files.
+# The trailing slash is optional because Conductor requests
+# /@api/deki/pages/{id}/?dream.out.format=json.
+@ideaPage path_regexp ideapage ^/@api/deki/pages/([0-9]+)/?$
+rewrite @ideaPage /@api/deki/pages/{re.ideapage.1}/page.json
+@ideaSecurity path_regexp ideasec ^/@api/deki/pages/([0-9]+)/security/?$
+rewrite @ideaSecurity /@api/deki/pages/{re.ideasec.1}/security.json
+@ideaTree path_regexp ideatree ^/@api/deki/pages/([0-9]+)/tree/?$
+rewrite @ideaTree /@api/deki/pages/{re.ideatree.1}/tree.json

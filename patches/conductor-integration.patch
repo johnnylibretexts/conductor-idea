@@ -1,0 +1,168 @@
+diff --git a/Dockerfile b/Dockerfile
+index 4af49dcc..d0634a8d 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -11,6 +11,7 @@ RUN npm ci --no-audit
+ 
+ # Copy source and build
+ COPY client/ ./
++COPY shared/ ../shared/
+ RUN npm run build
+ 
+ # Stage 2: Build server
+@@ -23,9 +24,12 @@ RUN npm ci --no-audit
+ 
+ # Copy source and build
+ COPY server/ ./
++COPY shared/ ../shared/
+ # Ensure public directory exists (even if not in source)
+ RUN mkdir -p ./public
+ RUN npm run build
++# Bundle operational commands so migrations/exports run without development dependencies.
++RUN npx --no-install tsup scripts/idea-migrate.ts scripts/idea-export.ts scripts/idea-maintenance.ts --format esm --out-dir dist/scripts
+ 
+ # Stage 3: Production runtime
+ FROM node:22-alpine3.22
+diff --git a/client/src/Conductor.jsx b/client/src/Conductor.jsx
+index f880b6f9..c6a40662 100644
+--- a/client/src/Conductor.jsx
++++ b/client/src/Conductor.jsx
+@@ -51,6 +51,8 @@ const ProjectsAvailable = lazy(() => import('./screens/conductor/Projects/Projec
+ const ProjectsCompleted = lazy(() => import('./screens/conductor/Projects/ProjectsCompleted'));
+ const ProjectsFlagged = lazy(() => import('./screens/conductor/Projects/ProjectsFlagged'));
+ import ProjectTimeline from './components/projects/ProjectTimeline';
++import SynthesisView from './components/projects/idea/SynthesisView';
++import ProjectIdeaReview from './components/projects/idea/ProjectIdeaReview';
+ import ProjectView from './components/projects/ProjectView';
+ const Search = lazy(() => import('./screens/conductor/Search'));
+ const ShapeshiftConsole = lazy(() => import('./screens/conductor/controlpanel/ShapeshiftConsole'));
+@@ -114,6 +116,8 @@ const Conductor = () => {
+           <PrivateRoute exact path='/projects/completed' component={ProjectsCompleted} />
+           <PrivateRoute exact path='/projects/flagged' component={ProjectsFlagged} />
+           <PrivateRoute exact path='/projects/:id' component={ProjectView} />
++          <PrivateRoute exact path='/projects/:id/idea-syntheses/:synthesisID?' component={SynthesisView} />
++          <PrivateRoute exact path='/projects/:id/idea/:reviewID?' component={ProjectIdeaReview} />
+           <PrivateRoute exact path='/projects/:id/accessibility' component={ProjectAccessibility} />
+           <PrivateRoute exact path='/projects/:id/peerreview' component={ProjectPeerReview} />
+           <PrivateRoute exact path='/projects/:id/timeline' component={ProjectTimeline} />
+diff --git a/client/src/components/projects/ProjectView.jsx b/client/src/components/projects/ProjectView.jsx
+index 3f096f94..b57275d5 100644
+--- a/client/src/components/projects/ProjectView.jsx
++++ b/client/src/components/projects/ProjectView.jsx
+@@ -1,3 +1,4 @@
++import { IdeaProjectLink } from './idea/IdeaProjectLink';
+ import './Projects.css'
+ import 'react-circular-progressbar/dist/styles.css';
+ 
+@@ -1676,6 +1677,7 @@ const ProjectView = (props) => {
+                               Peer Review
+                             </Breakpoint>
+                           </Button>
++                          <IdeaProjectLink projectID={props.match.params.id} />
+                           <Button
+                             color='teal'
+                             as={Link}
+diff --git a/server/api.js b/server/api.js
+index a4198227..a4db33e9 100644
+--- a/server/api.js
++++ b/server/api.js
+@@ -4,6 +4,7 @@
+  */
+ 
+ import express from "express";
++import ideaRouter, { ideaJSONParser, ideaError } from "./api/idea.js";
+ import cors from "cors";
+ import bodyParser from "body-parser";
+ import { catchInternal } from "./util/helpers.js";
+@@ -140,6 +141,7 @@ permalinkRouter.route("/:projectID/:fileID").get(
+ // Handle standard API routes (with /api/v1 prefix)
+ const router = express.Router();
+ router.use(corsMiddleware);
++router.use("/projects/:projectID/idea", ideaJSONParser, ideaError);
+ router.use(
+   middleware.middlewareFilter(["/payments/webhook", "/store/webhooks/stripe", "/store/webhooks/lulu"], bodyParser.json())
+ );
+@@ -152,6 +154,7 @@ router.use(middleware.authSanitizer);
+  */
+ router.use(authAPI.optionalVerifyRequest);
+ router.use(rateLimitMiddleware);
++router.use("/projects/:projectID/idea", ideaRouter);
+ 
+ /* Auth */
+ router.route("/oidc/libretexts").get(authAPI.completeLogin);
+diff --git a/server/server.ts b/server/server.ts
+index 21df3ba6..f8873d66 100644
+--- a/server/server.ts
++++ b/server/server.ts
+@@ -14,6 +14,10 @@ import { fileURLToPath } from "url";
+ import fs from "fs";
+ import express from "express";
+ import mongoose from "mongoose";
++import { startCaptureWorker } from "./api/services/idea/capture-worker.js";
++import { startAIWorker } from "./api/services/idea/ai-worker.js";
++let stopIdeaAI: (() => globalThis.Promise<void>) | undefined;
++let stopIdeaCapture: (() => globalThis.Promise<void>) | undefined;
+ import cookieParser from "cookie-parser";
+ import Promise from "bluebird";
+ import helmet from "helmet";
+@@ -225,6 +229,8 @@ async function connectToMongoDB(retryCount = 0) {
+     });
+ 
+     debugDB("✓ Connected to MongoDB Atlas.");
++    stopIdeaCapture ??= startCaptureWorker();
++    stopIdeaAI ??= startAIWorker();
+   } catch (err) {
+     debugDB(`✗ Failed to connect to MongoDB (attempt ${retryCount + 1}/${maxRetries + 1}):`);
+     debugDB(err);
+@@ -262,7 +268,9 @@ mongoose.connection.on("disconnected", () => {
+ function shutdown() {
+   if (server.listening) {
+     console.log("\nConductor is shutting down...");
++    const ideaDrain = globalThis.Promise.all([stopIdeaCapture?.(), stopIdeaAI?.()]);
+     server.close(async () => {
++      await ideaDrain;
+       await mongoose.disconnect().catch((e) => {
+         console.error("Error gracefully closing MongoDB connection:");
+         console.error(e);
+diff --git a/server/util/librariesclient.ts b/server/util/librariesclient.ts
+index 7f2c762d..b78c3353 100644
+--- a/server/util/librariesclient.ts
++++ b/server/util/librariesclient.ts
+@@ -42,7 +42,7 @@ class LibrariesSSMClient {
+     return LibrariesSSMClient.instance;
+   }
+ 
+-  public async getLibraryCredentials(lib: string) {
++  public async getLibraryCredentials(lib: string, signal?: AbortSignal) {
+     try {
+       // Check if credentials are cached and still valid
+       if (this.credentialsCache[lib]) {
+@@ -63,7 +63,8 @@ class LibrariesSSMClient {
+           MaxResults: 10,
+           Recursive: true,
+           WithDecryption: true,
+-        })
++        }),
++        { abortSignal: signal }
+       );
+ 
+       if (pairResponse.$metadata.httpStatusCode !== 200) {
+@@ -114,7 +115,8 @@ class LibrariesSSMClient {
+  * including the API token.
+  */
+ export async function generateAPIRequestHeaders(
+-  lib: string
++  lib: string,
++  signal?: AbortSignal
+ ): Promise<LibraryAPIRequestHeaders | null> {
+   try {
+     const libClient = LibrariesSSMClient.getInstance();
+@@ -124,7 +126,7 @@ export async function generateAPIRequestHeaders(
+       );
+     }
+ 
+-    const creds = await libClient.getLibraryCredentials(lib);
++    const creds = await libClient.getLibraryCredentials(lib, signal);
+     if (!creds || !creds.keyPair || !creds.apiUsername) {
+       console.log("Failed attempt to generate library token pair.");
+       throw new Error("Error generating library token pair.");

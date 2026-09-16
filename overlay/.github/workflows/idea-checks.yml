@@ -1,0 +1,39 @@
+name: IDEA private workflow checks
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  idea:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27028:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      IDEA_TEST_MONGO_URI: mongodb://127.0.0.1:27028/idea_test_ci
+      IDEA_E2E_MONGO_URI: mongodb://127.0.0.1:27028/idea_test_browser_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix server ci --legacy-peer-deps
+      - run: npm --prefix client ci
+      - run: npm --prefix e2e/idea ci
+      - run: npm --prefix server test
+      - run: npm --prefix client test
+      - run: npm --prefix server run build
+      - run: npm --prefix client run build
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e/idea
+      - run: npm --prefix e2e/idea test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: idea-fictional-browser-failures
+          path: e2e/idea/test-results/
+          retention-days: 7

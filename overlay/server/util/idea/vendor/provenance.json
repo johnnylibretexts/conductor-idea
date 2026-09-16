@@ -1,0 +1,9 @@
+{
+  "upstream": "https://github.com/johnnyrobot/oer2canvas",
+  "commit": "93ad12abfc8fd4863ac7bf968acf9d360811efac",
+  "path": "src/engine/idea/framework.ts",
+  "sha256": "c899b93c9c278ab0d451fdf14299858047ab5464f307f714d0c6a950480e8b02",
+  "softwareLicense": "ISC",
+  "frameworkLicense": "CC BY 4.0",
+  "modifications": "None to vendor file; Conductor wrappers, schemas, prompts and fixtures are separate."
+}

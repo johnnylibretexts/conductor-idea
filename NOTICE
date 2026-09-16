@@ -1,0 +1,37 @@
+conductor-idea — third-party notices
+
+1. Conductor
+   This repository is an integration layer for LibreTexts Conductor
+   (https://github.com/libretexts/conductor), MIT License, Copyright (c) 2023
+   LibreTexts. The six patched files remain under Conductor's licence.
+
+2. Vendored IDEA framework module
+   overlay/server/util/idea/vendor/oeri-framework.ts is a byte-identical copy of
+   src/engine/idea/framework.ts from johnnyrobot/oer2canvas at commit
+   93ad12abfc8fd4863ac7bf968acf9d360811efac, ISC License, Copyright (c) 2026
+   johnnyrobot. The licence text is kept beside it as
+   overlay/server/util/idea/vendor/LICENSE.oer2canvas and the provenance record
+   as overlay/server/util/idea/vendor/provenance.json. The file is unmodified.
+
+3. ASCCC OERI IDEA Framework text
+   The framework categories, elements, rubric rows and resources contained in
+   that module are the ASCCC Open Educational Resources Initiative's
+   "Inclusion, Diversity, Equity, and Anti-Racism (IDEA) Framework and
+   Implementation Guide, March 2025", licensed CC BY 4.0
+   (https://creativecommons.org/licenses/by/4.0/). Source:
+   https://asccc-oeri.org/asccc-oeri-inclusion-diversity-equity-and-anti-racism-idea-audit-framework/
+   The application renders and exports FRAMEWORK_ATTRIBUTION with that text;
+   keep it when reusing the definitions.
+
+4. OERI AI Crosswalk Instructions
+   The task instructions and reference guidance in
+   overlay/server/util/idea/prompts.ts and references.ts adapt the workflow and
+   task shapes of the OERI "IDEA Framework AI Crosswalk Instructions"
+   (https://asccc-oeri.org/wp-content/uploads/2026/04/IDEA-Framework-AI-Crosswalk-Instructions.pdf,
+   pages 3–12). They are application adaptations, not a verbatim copy and not
+   an assertion of OERI endorsement. Linked external references are not bundled.
+
+5. Test fixtures
+   overlay/server/util/idea/fixtures/ and overlay/e2e/idea/ contain original
+   fictional chapters and scripted provider outputs. They are not real studies,
+   assessments or statements about real people.

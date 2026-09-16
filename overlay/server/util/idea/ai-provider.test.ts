@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createProviders, eligibleStatus, finalResponse, nativeSchema, providerConfiguration } from '../../api/services/idea/live-provider.js';
+import { lunaCost } from '../../api/services/idea/ai-quota.js';
+import { buildPrompt } from './prompts.js';
+import { chapters, context } from './fixtures/chapters.js';
+import type { IdeaAIRequest } from '../../api/services/idea/ai-provider.js';
+const prompt = buildPrompt({ mode: '7.3', context, snapshots: [chapters[0]] });
+const request: IdeaAIRequest = { runID: 'r', attemptID: 'a', projectID: 'p', inputHash: 'h', profileID: 'idea-openai-luna-v1', provider: 'openai', mode: '7.3', messages: prompt.messages, outputSchema: prompt.outputSchema, answerTokenLimit: 8000, reasoningAllowance: 8192 };
+const response = { id: 'safe-request-id', model: 'served-alias', choices: [{ finish_reason: 'stop', message: { content: '{}', reasoning: 'never retain this' } }], usage: { prompt_tokens: 10, completion_tokens: 20, completion_tokens_details: { reasoning_tokens: 15 } } };
+test('OpenAI-only configuration ignores Ollama settings and requires the central Luna key', () => {
+  assert.deepEqual(providerConfiguration({ OPENAI_API_KEY: 'secret' }), { valid: true, primary: true });
+  assert.deepEqual(providerConfiguration({ OLLAMA_API_KEY: 'secret' }), { valid: true, primary: false });
+  assert.equal(providerConfiguration({ REMEDY_TEXT_MODEL: 'future-ollama-model', REMEDY_REASONING_EFFORT: 'anything', OPENAI_API_KEY: 'secret' }).primary, true);
+  assert.equal(providerConfiguration({ REMEDY_FALLBACK_TEXT_MODEL: 'other-model', OPENAI_API_KEY: 'secret' }).valid, false);
+});
+test('only OpenAI transport exists, with fixed Luna controls and no SDK retries', async () => {
+  const calls: { url: string; body: any }[] = [];
+  const transport: typeof fetch = async (url, init) => { calls.push({ url: String(url), body: JSON.parse(init?.body as string) }); return new Response(JSON.stringify(response), { headers: { 'Content-Type': 'application/json' } }); };
+  const providers = createProviders({ OLLAMA_API_KEY: 'fixture-key', OPENAI_API_KEY: 'fixture-key' }, transport);
+  assert.deepEqual(Object.keys(providers), ['openai']);
+  const luna = await providers.openai.submit(request, new AbortController().signal);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.openai.com/v1/chat/completions');
+  assert.equal(calls[0].body.model, 'gpt-5.6-luna'); assert.equal(calls[0].body.reasoning_effort, 'high'); assert.equal(calls[0].body.store, false);
+  assert.equal(calls[0].body.max_completion_tokens, 16192); assert.equal(calls[0].body.temperature, undefined); assert.equal(calls[0].body.max_tokens, undefined);
+  assert.equal(calls[0].body.response_format.json_schema.strict, true);
+  assert.equal(JSON.stringify(luna).includes('never retain'), false); assert.equal(lunaCost(luna.usage), 26);
+  let count = 0;
+  const broken = createProviders({ OPENAI_API_KEY: 'fixture' }, async () => { count++; return new Response('PRIVATE_RAW_PROVIDER_ERROR', { status: 429 }); });
+  await assert.rejects(broken.openai.submit(request, new AbortController().signal), (e: any) => e.code === 'PROVIDER_HTTP_ERROR' && !JSON.stringify(e).includes('PRIVATE_RAW'));
+  assert.equal(count, 1);
+});
+test('HTTP classification and refusal recognition', () => {
+  for (const status of [401, 404, 408, 409, 425, 429, 500, 503]) assert.equal(eligibleStatus(status), true);
+  for (const status of [400, 403, 422]) assert.equal(eligibleStatus(status), false);
+  assert.equal(finalResponse({ ...response, choices: [{ finish_reason: 'content_filter', message: {} }] }, 'openai').finish, 'refused');
+  assert.equal(lunaCost({}), 36416);
+  assert.equal(lunaCost({ inputTokens: 48512, outputTokens: 16192 }), 29133);
+  assert.equal(nativeSchema(prompt.outputSchema).additionalProperties, false);
+  assert.equal(JSON.stringify(nativeSchema(prompt.outputSchema)).includes('oneOf'), false);
+  assert.deepEqual(nativeSchema({ const: 'quoted', type: 'string' }), { enum: ['quoted'], type: 'string' });
+});

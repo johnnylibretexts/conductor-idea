@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "material": "Original fictional chapters, not actual OER or research.",
+  "chapters": [
+    "environment-v1",
+    "health-v1"
+  ],
+  "purposes": [
+    "all Crosswalk output shapes",
+    "missing descriptions and metadata",
+    "historical quotation",
+    "explicit participant evidence",
+    "source prompt injection",
+    "partial coverage"
+  ],
+  "provider": "Scripted test-only provider; no credentials or network calls.",
+  "browserHarness": "e2e/idea: production UI/router/storage/workers with scripted external transports",
+  "liveEvidence": "docs/idea/evidence/idea07-2026-09-14 (public CC BY sections; separate from fictional fixtures)",
+  "liveQualification": "Two 7.3 drafts only; GLM timed out, Luna fallback passed. Not full pilot approval."
+}

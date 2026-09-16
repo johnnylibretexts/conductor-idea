@@ -1,0 +1,9 @@
+# Demo only. Lines to add under the Conductor service's `environment:` in
+# docker-compose.yml. Production deployments set the same IDEA_* flags but
+# NOT IDEA_LIBRARY_HOSTS; they use the AWS/SSM library credential path instead.
+      OPENAI_API_KEY: "REPLACE_WITH_A_REAL_KEY"
+      IDEA_LIBRARY_HOSTS: '{"mirror":"library.example.test"}'
+      IDEA_REVIEW_ENABLED: "true"
+      IDEA_WORKER_ENABLED: "true"
+      IDEA_AI_ENABLED: "false"
+      IDEA_PILOT_PROJECT_IDS: '["PROJECTID10"]'

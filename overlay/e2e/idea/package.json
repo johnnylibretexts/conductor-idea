@@ -1,0 +1,1 @@
+{"name":"idea-browser-qualification","private":true,"type":"module","scripts":{"test":"playwright test","start:api":"../../server/node_modules/.bin/tsx ../../server/util/idea/fixtures/e2e-server.ts","start:ui":"../../client/node_modules/.bin/vite --config vite.config.mjs"},"devDependencies":{"@playwright/test":"1.58.2","@axe-core/playwright":"4.11.1"}}
