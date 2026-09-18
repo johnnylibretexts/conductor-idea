@@ -37,6 +37,7 @@ that deployment; sections marked **production** describe what a LibreTexts deplo
 9. [What was verified](#9-what-was-verified)
 10. [Known limits and open work](#10-known-limits-and-open-work)
 11. [File map](#11-file-map)
+12. [Reproducing the demo](#12-reproducing-the-demo)
 
 ---
 
@@ -456,3 +457,33 @@ patches/conductor-integration.patch
 demo/idea_index.py  demo/caddy-library-rewrites.caddy  demo/conductor-environment.example.yml
 LICENSE  NOTICE  README.md
 ```
+
+## 12. Reproducing the demo
+
+The demo video that accompanies this repository walks one loop on the proof-of-concept
+deployment: capture → faculty rubric → one AI draft → disposition → JSON export. It maps onto §5
+step for step. To reproduce it on your own Conductor:
+
+1. **Apply the feature** (§3) and set the flags (§4): `IDEA_REVIEW_ENABLED=true`,
+   `IDEA_WORKER_ENABLED=true`, `IDEA_AI_ENABLED=true`, `IDEA_PILOT_PROJECT_IDS=["<your project>"]`,
+   `OPENAI_API_KEY`. Recreate the Conductor process.
+2. **Bind a project to a public book.** The project's `libreLibrary`/`libreCoverID` must point at the
+   book's cover page, the library must exist in Conductor's `libraries` collection, and the faculty
+   user must be a lead or member. Production reads the library through Conductor's existing SSM
+   token path; the demo used `IDEA_LIBRARY_HOSTS` and the mirror indexer in `demo/` instead (§8).
+3. **Capture one short page.** Open the project → **IDEA Review** → fill *Review context* →
+   **Discover public chapter pages** → tick a single cover or introduction page → **Capture selected
+   pages**. The demo captured the Unit 3 cover of *French OER 1*. Keep the first capture small: the
+   AI input limit is 48,000 bytes per task and a full section of a language textbook (≈200 blocks)
+   exceeds it for the longer tasks (§10).
+4. **Review.** Rate a few rubric rows; open the rating legend and the task help panel.
+5. **One AI draft.** Pick task 7.3 (or 7.1) → **Save and estimate** → read the cost → tick the
+   agreement → **Request draft**. Expect 10–75 s. Open a *Check captured evidence* button; every
+   claim must resolve to a captured block. Record a disposition; nothing is adopted automatically.
+6. **Export JSON** and read the `provenance` block: snapshot hash, model, tokens, settled cost,
+   evidence pointers.
+
+What the demo does **not** show, and what you should try next: a second page and the
+**Compare chapters in a synthesis** flow (needs two finished reviews), and `IDEA_AI_ENABLED=false`
+drain behaviour (§6).
+
